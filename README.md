@@ -359,6 +359,45 @@ docker build -t mcr.microsoft.com/playwright/mcp .
 </details>
 
 <details>
+<summary><b>Fly.io Deployment</b></summary>
+
+Deploy as an HTTP MCP server on Fly.io for remote access:
+
+**Prerequisites:**
+- Install [Fly.io CLI](https://fly.io/docs/hands-on/install-flyctl/)
+- Authenticate: `flyctl auth login`
+
+**Deploy:**
+```bash
+# Clone the repository
+git clone https://github.com/microsoft/playwright-mcp
+cd playwright-mcp
+
+# Deploy to Fly.io
+flyctl deploy
+```
+
+**Configure your MCP client:**
+```js
+{
+  "mcpServers": {
+    "playwright": {
+      "url": "https://your-app-name.fly.dev/mcp"
+    }
+  }
+}
+```
+
+The deployment includes:
+- HTTP streamable transport for MCP
+- Health check endpoint at `/health`
+- Automatic scaling (sleeps when idle)
+- Chromium browser in headless mode
+
+**Note:** Replace `your-app-name` with your actual Fly.io app name from `fly.toml`.
+</details>
+
+<details>
 <summary><b>Programmatic usage</b></summary>
 
 ```js

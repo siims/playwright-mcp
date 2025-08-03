@@ -114,6 +114,15 @@ function startHttpTransport(httpServer: http.Server, serverBackendFactory: Serve
   const streamableSessions = new Map();
   httpServer.on('request', async (req, res) => {
     const url = new URL(`http://localhost${req.url}`);
+    
+    // Health check endpoint for Fly.io
+    if (url.pathname === '/health') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+      return;
+    }
+    
     if (url.pathname.startsWith('/sse'))
       await handleSSE(serverBackendFactory, req, res, url, sseSessions);
     else

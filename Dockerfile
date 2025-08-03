@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked,id=npm-cache \
   npm ci
 
 # Copy the rest of the app
-COPY *.json *.js *.ts .
+COPY *.json *.js *.ts ./
 COPY src src/
 
 # Build the app
@@ -59,11 +59,17 @@ ENV NODE_ENV=production
 # Set the correct ownership for the runtime user on production `node_modules`
 RUN chown -R ${USERNAME}:${USERNAME} node_modules
 
-USER ${USERNAME}
-
 COPY --from=browser --chown=${USERNAME}:${USERNAME} ${PLAYWRIGHT_BROWSERS_PATH} ${PLAYWRIGHT_BROWSERS_PATH}
-COPY --chown=${USERNAME}:${USERNAME} cli.js package.json ./
+COPY --chown=${USERNAME}:${USERNAME} cli.js package.json entrypoint.sh ./
 COPY --from=builder --chown=${USERNAME}:${USERNAME} /app/lib /app/lib
 
-# Run in headless and only with chromium (other browsers need more dependencies not included in this image)
-ENTRYPOINT ["node", "cli.js", "--headless", "--browser", "chromium", "--no-sandbox"]
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh
+
+USER ${USERNAME}
+
+# Expose the port (Fly.io will set PORT environment variable)
+EXPOSE 8080
+
+# Use the entrypoint script that handles PORT environment variable
+ENTRYPOINT ["./entrypoint.sh"]
