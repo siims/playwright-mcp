@@ -1,3 +1,19 @@
+# Playwright MCP Server - Fly.io Deployment Configuration
+#
+# This configuration file defines the deployment settings for running the Playwright MCP server on Fly.io.
+#
+# To deploy this application to Fly.io:
+# 1. Ensure you have the Fly CLI installed and are logged in
+# 2. Run the following deploy command:
+#    fly deploy --local-only --ha=false --smoke-checks=false
+#
+# Deploy command flags explained:
+# --local-only: Builds the Docker image locally instead of on Fly's builders
+# --ha=false: Disables high availability (single instance deployment)
+# --smoke-checks=false: Skips smoke checks after deployment
+#
+# For more information about Fly.io deployment options, visit: https://fly.io/docs/
+
 app = "news-summarizer-playwright-mcp"
 primary_region = "fra"
 
