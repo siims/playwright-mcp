@@ -205,6 +205,7 @@ export class Context {
     const result = await this._browserContextFactory.createContext(this._clientInfo, this._abortController.signal);
     const { browserContext } = result;
     await this._setupRequestInterception(browserContext);
+    await browserContext.addInitScript(`Object.defineProperty(navigator, 'webdriver', {get: () => undefined})`);
     if (this.sessionLog)
       await InputRecorder.create(this, browserContext);
     for (const page of browserContext.pages())
