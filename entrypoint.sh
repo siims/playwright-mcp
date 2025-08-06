@@ -17,4 +17,4 @@ random_chromium_user_agent_strings=(
 )
 
 # Run the application with HTTP transport
-exec node cli.js --headless --browser chromium --no-sandbox --host 0.0.0.0 --port "$PORT" --user-agent "${random_chromium_user_agent_strings[ $RANDOM % ${#random_chromium_user_agent_strings[@]} ]}"
+exec node cli.js --headless --isolated --browser chromium --no-sandbox --host 0.0.0.0 --port "$PORT" --user-agent "${random_chromium_user_agent_strings[ $RANDOM % ${#random_chromium_user_agent_strings[@]} ]}"

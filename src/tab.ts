@@ -77,7 +77,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       void this._downloadStarted(download);
     });
     page.setDefaultNavigationTimeout(60000);
-    page.setDefaultTimeout(5000);
+    page.setDefaultTimeout(10000);
     (page as any)[tabSymbol] = this;
   }
 
@@ -180,8 +180,8 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       return;
     }
 
-    // Cap load event to 5 seconds, the page is operational at this point.
-    await this.waitForLoadState('load', { timeout: 5000 });
+    // Cap load event to 10 seconds, the page is operational at this point.
+    await this.waitForLoadState('load', { timeout: 10000 });
   }
 
   consoleMessages(): ConsoleMessage[] {
