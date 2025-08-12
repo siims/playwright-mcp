@@ -1,6 +1,6 @@
 {
   "name": "@playwright/mcp",
-  "version": "0.0.32-custom-02",
+  "version": "0.0.32-custom-03",
   "description": "Playwright Tools for MCP",
   "type": "module",
   "repository": {

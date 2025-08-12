@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -x
 
 # Use PORT environment variable from Fly.io, fallback to 8080
 PORT=${PORT:-8080}
@@ -17,4 +18,4 @@ random_chromium_user_agent_strings=(
 )
 
 # Run the application with HTTP transport
-exec node cli.js --headless --isolated --browser chromium --no-sandbox --host 0.0.0.0 --port "$PORT" --user-agent "${random_chromium_user_agent_strings[ $RANDOM % ${#random_chromium_user_agent_strings[@]} ]}"
+DEBUG=pw:mcp:* exec node cli.js --headless --isolated --browser chromium --no-sandbox --host 0.0.0.0 --port "$PORT" --user-agent "${random_chromium_user_agent_strings[ $RANDOM % ${#random_chromium_user_agent_strings[@]} ]}" 2>&1
