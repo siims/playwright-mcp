@@ -21,8 +21,10 @@ import path from 'path';
 import * as playwright from 'playwright';
 // @ts-ignore
 import { registryDirectory } from 'playwright-core/lib/server/registry/index';
-import { logUnhandledError, testDebug } from './log.js';
-import { createHash } from './utils.js';
+// @ts-ignore
+import { startTraceViewerServer } from 'playwright-core/lib/server';
+import { logUnhandledError, testDebug } from './utils/log.js';
+import { createHash } from './utils/guid.js';
 import { outputFile  } from './config.js';
 
 import type { FullConfig } from './config.js';
@@ -40,29 +42,24 @@ export function contextFactory(config: FullConfig): BrowserContextFactory {
 export type ClientInfo = { name?: string, version?: string, rootPath?: string };
 
 export interface BrowserContextFactory {
-  readonly name: string;
-  readonly description: string;
   createContext(clientInfo: ClientInfo, abortSignal: AbortSignal): Promise<{ browserContext: playwright.BrowserContext, close: () => Promise<void> }>;
 }
 
 class BaseContextFactory implements BrowserContextFactory {
-  readonly name: string;
-  readonly description: string;
   readonly config: FullConfig;
+  private _logName: string;
   protected _browserPromise: Promise<playwright.Browser> | undefined;
-  protected _tracesDir: string | undefined;
 
-  constructor(name: string, description: string, config: FullConfig) {
-    this.name = name;
-    this.description = description;
+  constructor(name: string, config: FullConfig) {
+    this._logName = name;
     this.config = config;
   }
 
-  protected async _obtainBrowser(): Promise<playwright.Browser> {
+  protected async _obtainBrowser(clientInfo: ClientInfo): Promise<playwright.Browser> {
     if (this._browserPromise)
       return this._browserPromise;
-    testDebug(`obtain browser (${this.name})`);
-    this._browserPromise = this._doObtainBrowser();
+    testDebug(`obtain browser (${this._logName})`);
+    this._browserPromise = this._doObtainBrowser(clientInfo);
     void this._browserPromise.then(browser => {
       browser.on('disconnected', () => {
         this._browserPromise = undefined;
@@ -73,16 +70,13 @@ class BaseContextFactory implements BrowserContextFactory {
     return this._browserPromise;
   }
 
-  protected async _doObtainBrowser(): Promise<playwright.Browser> {
+  protected async _doObtainBrowser(clientInfo: ClientInfo): Promise<playwright.Browser> {
     throw new Error('Not implemented');
   }
 
   async createContext(clientInfo: ClientInfo): Promise<{ browserContext: playwright.BrowserContext, close: () => Promise<void> }> {
-    if (this.config.saveTrace)
-      this._tracesDir = await outputFile(this.config, clientInfo.rootPath, `traces-${Date.now()}`);
-
-    testDebug(`create browser context (${this.name})`);
-    const browser = await this._obtainBrowser();
+    testDebug(`create browser context (${this._logName})`);
+    const browser = await this._obtainBrowser(clientInfo);
     const browserContext = await this._doCreateContext(browser);
     return { browserContext, close: () => this._closeBrowserContext(browserContext, browser) };
   }
@@ -92,12 +86,12 @@ class BaseContextFactory implements BrowserContextFactory {
   }
 
   private async _closeBrowserContext(browserContext: playwright.BrowserContext, browser: playwright.Browser) {
-    testDebug(`close browser context (${this.name})`);
+    testDebug(`close browser context (${this._logName})`);
     if (browser.contexts().length === 1)
       this._browserPromise = undefined;
     await browserContext.close().catch(logUnhandledError);
     if (browser.contexts().length === 0) {
-      testDebug(`close browser (${this.name})`);
+      testDebug(`close browser (${this._logName})`);
       await browser.close().catch(logUnhandledError);
     }
   }
@@ -105,14 +99,14 @@ class BaseContextFactory implements BrowserContextFactory {
 
 class IsolatedContextFactory extends BaseContextFactory {
   constructor(config: FullConfig) {
-    super('isolated', 'Create a new isolated browser context', config);
+    super('isolated', config);
   }
 
-  protected override async _doObtainBrowser(): Promise<playwright.Browser> {
+  protected override async _doObtainBrowser(clientInfo: ClientInfo): Promise<playwright.Browser> {
     await injectCdpPort(this.config.browser);
     const browserType = playwright[this.config.browser.browserName];
     return browserType.launch({
-      tracesDir: this._tracesDir,
+      tracesDir: await startTraceServer(this.config, clientInfo.rootPath),
       ...this.config.browser.launchOptions,
       handleSIGINT: false,
       handleSIGTERM: false,
@@ -130,7 +124,7 @@ class IsolatedContextFactory extends BaseContextFactory {
 
 class CdpContextFactory extends BaseContextFactory {
   constructor(config: FullConfig) {
-    super('cdp', 'Connect to a browser over CDP', config);
+    super('cdp', config);
   }
 
   protected override async _doObtainBrowser(): Promise<playwright.Browser> {
@@ -144,7 +138,7 @@ class CdpContextFactory extends BaseContextFactory {
 
 class RemoteContextFactory extends BaseContextFactory {
   constructor(config: FullConfig) {
-    super('remote', 'Connect to a browser using a remote endpoint', config);
+    super('remote', config);
   }
 
   protected override async _doObtainBrowser(): Promise<playwright.Browser> {
@@ -175,9 +169,7 @@ class PersistentContextFactory implements BrowserContextFactory {
     await injectCdpPort(this.config.browser);
     testDebug('create browser context (persistent)');
     const userDataDir = this.config.browser.userDataDir ?? await this._createUserDataDir(clientInfo.rootPath);
-    let tracesDir: string | undefined;
-    if (this.config.saveTrace)
-      tracesDir = await outputFile(this.config, clientInfo.rootPath, `traces-${Date.now()}`);
+    const tracesDir = await startTraceServer(this.config, clientInfo.rootPath);
 
     this._userDataDirs.add(userDataDir);
     testDebug('lock user data dir', userDataDir);
@@ -241,4 +233,17 @@ async function findFreePort(): Promise<number> {
     });
     server.on('error', reject);
   });
+}
+
+async function startTraceServer(config: FullConfig, rootPath: string | undefined): Promise<string | undefined> {
+  if (!config.saveTrace)
+    return undefined;
+
+  const tracesDir = await outputFile(config, rootPath, `traces-${Date.now()}`);
+  const server = await startTraceViewerServer();
+  const urlPrefix = server.urlPrefix('human-readable');
+  const url = urlPrefix + '/trace/index.html?trace=' + tracesDir + '/trace.json';
+  // eslint-disable-next-line no-console
+  console.error('\nTrace viewer listening on ' + url);
+  return tracesDir;
 }

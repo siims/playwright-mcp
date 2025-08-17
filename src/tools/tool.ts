@@ -20,7 +20,7 @@ import type * as playwright from 'playwright';
 import type { ToolCapability } from '../../config.js';
 import type { Tab } from '../tab.js';
 import type { Response } from '../response.js';
-import type { ToolSchema } from '../mcp/server.js';
+import type { ToolSchema } from '../mcp/tool.js';
 
 export type FileUploadModalState = {
   type: 'fileChooser';

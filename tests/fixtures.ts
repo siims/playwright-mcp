@@ -40,14 +40,18 @@ type CDPServer = {
   start: () => Promise<BrowserContext>;
 };
 
+export type StartClient = (options?: {
+  clientName?: string,
+  args?: string[],
+  config?: Config,
+  roots?: { name: string, uri: string }[],
+  rootsResponseDelay?: number,
+}) => Promise<{ client: Client, stderr: () => string }>;
+
+
 type TestFixtures = {
   client: Client;
-  startClient: (options?: {
-    clientName?: string,
-    args?: string[],
-    config?: Config,
-    roots?: { name: string, uri: string }[],
-  }) => Promise<{ client: Client, stderr: () => string }>;
+  startClient: StartClient;
   wsEndpoint: string;
   cdpServer: CDPServer;
   server: TestServer;
@@ -68,7 +72,7 @@ export const test = baseTest.extend<TestFixtures & TestOptions, WorkerFixtures>(
 
   startClient: async ({ mcpHeadless, mcpBrowser, mcpMode }, use, testInfo) => {
     const configDir = path.dirname(test.info().config.configFile!);
-    let client: Client | undefined;
+    const clients: Client[] = [];
 
     await use(async options => {
       const args: string[] = [];
@@ -86,9 +90,11 @@ export const test = baseTest.extend<TestFixtures & TestOptions, WorkerFixtures>(
         args.push(`--config=${path.relative(configDir, configFile)}`);
       }
 
-      client = new Client({ name: options?.clientName ?? 'test', version: '1.0.0' }, options?.roots ? { capabilities: { roots: {} } } : undefined);
+      const client = new Client({ name: options?.clientName ?? 'test', version: '1.0.0' }, options?.roots ? { capabilities: { roots: {} } } : undefined);
       if (options?.roots) {
         client.setRequestHandler(ListRootsRequestSchema, async request => {
+          if (options.rootsResponseDelay)
+            await new Promise(resolve => setTimeout(resolve, options.rootsResponseDelay));
           return {
             roots: options.roots,
           };
@@ -101,12 +107,13 @@ export const test = baseTest.extend<TestFixtures & TestOptions, WorkerFixtures>(
           process.stderr.write(data);
         stderrBuffer += data.toString();
       });
+      clients.push(client);
       await client.connect(transport);
       await client.ping();
       return { client, stderr: () => stderrBuffer };
     });
 
-    await client?.close();
+    await Promise.all(clients.map(client => client.close()));
   },
 
   wsEndpoint: async ({ }, use) => {
@@ -123,6 +130,8 @@ export const test = baseTest.extend<TestFixtures & TestOptions, WorkerFixtures>(
     await use({
       endpoint: `http://localhost:${port}`,
       start: async () => {
+        if (browserContext)
+          throw new Error('CDP server already exists');
         browserContext = await chromium.launchPersistentContext(testInfo.outputPath('cdp-user-data-dir'), {
           channel: mcpBrowser,
           headless: true,
@@ -191,7 +200,7 @@ async function createTransport(args: string[], mcpMode: TestOptions['mcpMode'], 
   const transport = new StdioClientTransport({
     command: 'node',
     args: [path.join(path.dirname(__filename), '../cli.js'), ...args],
-    cwd: path.join(path.dirname(__filename), '..'),
+    cwd: path.dirname(test.info().config.configFile!),
     stderr: 'pipe',
     env: {
       ...process.env,

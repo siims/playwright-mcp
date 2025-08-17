@@ -15,48 +15,35 @@
  */
 
 import { fileURLToPath } from 'url';
-import { z } from 'zod';
 import { FullConfig } from './config.js';
 import { Context } from './context.js';
-import { logUnhandledError } from './log.js';
+import { logUnhandledError } from './utils/log.js';
 import { Response } from './response.js';
 import { SessionLog } from './sessionLog.js';
 import { filteredTools } from './tools.js';
-import { packageJSON } from './package.js';
-import { defineTool  } from './tools/tool.js';
+import { toMcpTool } from './mcp/tool.js';
 
 import type { Tool } from './tools/tool.js';
 import type { BrowserContextFactory } from './browserContextFactory.js';
 import type * as mcpServer from './mcp/server.js';
 import type { ServerBackend } from './mcp/server.js';
 
-type NonEmptyArray<T> = [T, ...T[]];
-
-export type FactoryList = NonEmptyArray<BrowserContextFactory>;
-
 export class BrowserServerBackend implements ServerBackend {
-  name = 'Playwright';
-  version = packageJSON.version;
-
   private _tools: Tool[];
   private _context: Context | undefined;
   private _sessionLog: SessionLog | undefined;
   private _config: FullConfig;
   private _browserContextFactory: BrowserContextFactory;
 
-  constructor(config: FullConfig, factories: FactoryList) {
+  constructor(config: FullConfig, factory: BrowserContextFactory) {
     this._config = config;
-    this._browserContextFactory = factories[0];
+    this._browserContextFactory = factory;
     this._tools = filteredTools(config);
-    if (factories.length > 1)
-      this._tools.push(this._defineContextSwitchTool(factories));
   }
 
-  async initialize(server: mcpServer.Server): Promise<void> {
-    const capabilities = server.getClientCapabilities() as mcpServer.ClientCapabilities;
+  async initialize(clientVersion: mcpServer.ClientVersion, roots: mcpServer.Root[]): Promise<void> {
     let rootPath: string | undefined;
-    if (capabilities.roots) {
-      const { roots } = await server.listRoots();
+    if (roots.length > 0) {
       const firstRootUri = roots[0]?.uri;
       const url = firstRootUri ? new URL(firstRootUri) : undefined;
       rootPath = url ? fileURLToPath(url) : undefined;
@@ -67,18 +54,21 @@ export class BrowserServerBackend implements ServerBackend {
       config: this._config,
       browserContextFactory: this._browserContextFactory,
       sessionLog: this._sessionLog,
-      clientInfo: { ...server.getClientVersion(), rootPath },
+      clientInfo: { ...clientVersion, rootPath },
     });
   }
 
-  tools(): mcpServer.ToolSchema<any>[] {
-    return this._tools.map(tool => tool.schema);
+  async listTools(): Promise<mcpServer.Tool[]> {
+    return this._tools.map(tool => toMcpTool(tool.schema));
   }
 
-  async callTool(schema: mcpServer.ToolSchema<any>, parsedArguments: any) {
+  async callTool(name: string, rawArguments: mcpServer.CallToolRequest['params']['arguments']) {
+    const tool = this._tools.find(tool => tool.schema.name === name)!;
+    if (!tool)
+      throw new Error(`Tool "${name}" not found`);
+    const parsedArguments = tool.schema.inputSchema.parse(rawArguments || {});
     const context = this._context!;
-    const response = new Response(context, schema.name, parsedArguments);
-    const tool = this._tools.find(tool => tool.schema.name === schema.name)!;
+    const response = new Response(context, name, parsedArguments);
     context.setRunningTool(true);
     try {
       await tool.handle(context, parsedArguments, response);
@@ -93,48 +83,6 @@ export class BrowserServerBackend implements ServerBackend {
   }
 
   serverClosed() {
-    void this._context!.dispose().catch(logUnhandledError);
-  }
-
-  private _defineContextSwitchTool(factories: FactoryList): Tool<any> {
-    const self = this;
-    return defineTool({
-      capability: 'core',
-
-      schema: {
-        name: 'browser_connect',
-        title: 'Connect to a browser context',
-        description: [
-          'Connect to a browser using one of the available methods:',
-          ...factories.map(factory => `- "${factory.name}": ${factory.description}`),
-        ].join('\n'),
-        inputSchema: z.object({
-          method: z.enum(factories.map(factory => factory.name) as [string, ...string[]]).default(factories[0].name).describe('The method to use to connect to the browser'),
-        }),
-        type: 'readOnly',
-      },
-
-      async handle(context, params, response) {
-        const factory = factories.find(factory => factory.name === params.method);
-        if (!factory) {
-          response.addError('Unknown connection method: ' + params.method);
-          return;
-        }
-        await self._setContextFactory(factory);
-        response.addResult('Successfully changed connection method.');
-      }
-    });
-  }
-
-  private async _setContextFactory(newFactory: BrowserContextFactory) {
-    if (this._context) {
-      const options = {
-        ...this._context.options,
-        browserContextFactory: newFactory,
-      };
-      await this._context.dispose();
-      this._context = new Context(options);
-    }
-    this._browserContextFactory = newFactory;
+    void this._context?.dispose().catch(logUnhandledError);
   }
 }

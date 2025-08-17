@@ -14,17 +14,9 @@
  * limitations under the License.
  */
 
-import type { z } from 'zod';
-import type * as mcpServer from '../mcp/server.js';
-import type { Context } from './context.js';
-import type { ToolSchema } from '../mcp/tool.js';
+import fs from 'fs';
+import path from 'path';
+import url from 'url';
 
-
-export type Tool<Input extends z.Schema = z.Schema> = {
-  schema: ToolSchema<Input>;
-  handle: (context: Context, params: z.output<Input>) => Promise<mcpServer.CallToolResult>;
-};
-
-export function defineTool<Input extends z.Schema>(tool: Tool<Input>): Tool<Input> {
-  return tool;
-}
+const __filename = url.fileURLToPath(import.meta.url);
+export const packageJSON = JSON.parse(fs.readFileSync(path.join(path.dirname(__filename), '..', '..', 'package.json'), 'utf8'));

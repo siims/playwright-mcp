@@ -14,9 +14,18 @@
  * limitations under the License.
  */
 
-import fs from 'fs';
-import path from 'path';
-import url from 'url';
+import { defineConfig } from '@playwright/test';
 
-const __filename = url.fileURLToPath(import.meta.url);
-export const packageJSON = JSON.parse(fs.readFileSync(path.join(path.dirname(__filename), '..', 'package.json'), 'utf8'));
+import type { TestOptions } from '../tests/fixtures.js';
+
+export default defineConfig<TestOptions>({
+  testDir: './tests',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'list',
+  projects: [
+    { name: 'chromium', use: { mcpBrowser: 'chromium' } },
+  ],
+});

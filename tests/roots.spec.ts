@@ -19,12 +19,13 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 import { test, expect } from './fixtures.js';
-import { createHash } from '../src/utils.js';
+import { createHash } from '../src/utils/guid.js';
 
 const p = process.platform === 'win32' ? 'c:\\non\\existent\\folder' : '/non/existent/folder';
 
 test('should use separate user data by root path', async ({ startClient, server }, testInfo) => {
   const { client } = await startClient({
+    clientName: 'Visual Studio Code',
     roots: [
       {
         name: 'test',
@@ -43,11 +44,11 @@ test('should use separate user data by root path', async ({ startClient, server 
   expect(file).toContain(hash);
 });
 
-
-test('check that trace is saved in workspace', async ({ startClient, server, mcpMode }, testInfo) => {
+test('check that trace is saved in workspace', async ({ startClient, server }, testInfo) => {
   const rootPath = testInfo.outputPath('workspace');
   const { client } = await startClient({
     args: ['--save-trace'],
+    clientName: 'My client',
     roots: [
       {
         name: 'workspace',
@@ -65,4 +66,14 @@ test('check that trace is saved in workspace', async ({ startClient, server, mcp
 
   const [file] = await fs.promises.readdir(path.join(rootPath, '.playwright-mcp'));
   expect(file).toContain('traces');
+});
+
+test('should list all tools when listRoots is slow', async ({ startClient, server }, testInfo) => {
+  const { client } = await startClient({
+    clientName: 'Another custom client',
+    roots: [],
+    rootsResponseDelay: 1000,
+  });
+  const tools = await client.listTools();
+  expect(tools.tools.length).toBeGreaterThan(20);
 });

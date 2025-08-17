@@ -26,9 +26,9 @@ import { spawn } from 'child_process';
 import http from 'http';
 import debug from 'debug';
 import { WebSocket, WebSocketServer } from 'ws';
-import { httpAddressToString } from '../httpServer.js';
-import { logUnhandledError } from '../log.js';
-import { ManualPromise } from '../manualPromise.js';
+import { httpAddressToString } from '../mcp/http.js';
+import { logUnhandledError } from '../utils/log.js';
+import { ManualPromise } from '../utils/manualPromise.js';
 import type websocket from 'ws';
 import type { ClientInfo } from '../browserContextFactory.js';
 
@@ -56,6 +56,7 @@ type CDPResponse = {
 export class CDPRelayServer {
   private _wsHost: string;
   private _browserChannel: string;
+  private _userDataDir?: string;
   private _cdpPath: string;
   private _extensionPath: string;
   private _wss: WebSocketServer;
@@ -69,9 +70,10 @@ export class CDPRelayServer {
   private _nextSessionId: number = 1;
   private _extensionConnectionPromise!: ManualPromise<void>;
 
-  constructor(server: http.Server, browserChannel: string) {
+  constructor(server: http.Server, browserChannel: string, userDataDir?: string) {
     this._wsHost = httpAddressToString(server.address()).replace(/^http/, 'ws');
     this._browserChannel = browserChannel;
+    this._userDataDir = userDataDir;
 
     const uuid = crypto.randomUUID();
     this._cdpPath = `/cdp/${uuid}`;
@@ -98,6 +100,9 @@ export class CDPRelayServer {
     debugLogger('Waiting for incoming extension connection');
     await Promise.race([
       this._extensionConnectionPromise,
+      new Promise((_, reject) => setTimeout(() => {
+        reject(new Error(`Extension connection timeout. Make sure the "Playwright MCP Bridge" extension is installed. See https://github.com/microsoft/playwright-mcp/blob/main/extension/README.md for installation instructions.`));
+      }, process.env.PWMCP_TEST_CONNECTION_TIMEOUT ? parseInt(process.env.PWMCP_TEST_CONNECTION_TIMEOUT, 10) : 5_000)),
       new Promise((_, reject) => abortSignal.addEventListener('abort', reject))
     ]);
     debugLogger('Extension connection established');
@@ -106,7 +111,7 @@ export class CDPRelayServer {
   private _connectBrowser(clientInfo: ClientInfo) {
     const mcpRelayEndpoint = `${this._wsHost}${this._extensionPath}`;
     // Need to specify "key" in the manifest.json to make the id stable when loading from file.
-    const url = new URL('chrome-extension://jakfalbnbhgkpmoaakfflhflbfpkailf/lib/ui/connect.html');
+    const url = new URL('chrome-extension://jakfalbnbhgkpmoaakfflhflbfpkailf/connect.html');
     url.searchParams.set('mcpRelayUrl', mcpRelayEndpoint);
     url.searchParams.set('client', JSON.stringify(clientInfo));
     const href = url.toString();
@@ -117,7 +122,12 @@ export class CDPRelayServer {
     if (!executablePath)
       throw new Error(`"${this._browserChannel}" executable not found. Make sure it is installed at a standard location.`);
 
-    spawn(executablePath, [href], {
+    const args: string[] = [];
+    if (this._userDataDir)
+      args.push(`--user-data-dir=${this._userDataDir}`);
+    args.push(href);
+
+    spawn(executablePath, args, {
       windowsHide: true,
       detached: true,
       shell: false,
