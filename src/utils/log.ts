@@ -17,9 +17,14 @@
 import debug from 'debug';
 
 const errorsDebug = debug('pw:mcp:errors');
+const debugDebug = debug('pw:mcp:debug');
 
 export function logUnhandledError(error: unknown) {
   errorsDebug(error);
+}
+
+export function logDebug(message: unknown) {
+  debugDebug(message);
 }
 
 export const testDebug = debug('pw:mcp:test');

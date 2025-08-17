@@ -62,6 +62,15 @@ export async function installHttpTransport(httpServer: http.Server, serverBacken
   const streamableSessions = new Map();
   httpServer.on('request', async (req, res) => {
     const url = new URL(`http://localhost${req.url}`);
+    
+    // Health check endpoint for Fly.io
+    if (url.pathname === '/health') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+      return;
+    }
+    
     if (url.pathname.startsWith('/sse'))
       await handleSSE(serverBackendFactory, req, res, url, sseSessions);
     else
@@ -137,38 +146,4 @@ async function handleStreamable(serverBackendFactory: ServerBackendFactory, req:
   res.end('Invalid request');
 }
 
-function startHttpTransport(httpServer: http.Server, serverBackendFactory: ServerBackendFactory) {
-  const sseSessions = new Map();
-  const streamableSessions = new Map();
-  httpServer.on('request', async (req, res) => {
-    const url = new URL(`http://localhost${req.url}`);
-    
-    // Health check endpoint for Fly.io
-    if (url.pathname === '/health') {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
-      return;
-    }
-    
-    if (url.pathname.startsWith('/sse'))
-      await handleSSE(serverBackendFactory, req, res, url, sseSessions);
-    else
-      await handleStreamable(serverBackendFactory, req, res, streamableSessions);
-  });
-  const url = httpAddressToString(httpServer.address());
-  const message = [
-    `Listening on ${url}`,
-    'Put this in your client config:',
-    JSON.stringify({
-      'mcpServers': {
-        'playwright': {
-          'url': `${url}/mcp`
-        }
-      }
-    }, undefined, 2),
-    'For legacy SSE transport support, you can use the /sse endpoint instead.',
-  ].join('\n');
-    // eslint-disable-next-line no-console
-  console.error(message);
-}
+

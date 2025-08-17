@@ -17,7 +17,7 @@
 import { EventEmitter } from 'events';
 import * as playwright from 'playwright';
 import { callOnPageNoTrace, waitForCompletion } from './tools/utils.js';
-import { logUnhandledError } from './utils/log.js';
+import { logDebug, logUnhandledError } from './utils/log.js';
 import { ManualPromise } from './utils/manualPromise.js';
 import { ModalState } from './tools/tool.js';
 
@@ -158,7 +158,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   async navigate(url: string) {
     this._clearCollectedArtifacts();
 
-    const downloadEvent = callOnPageNoTrace(this.page, page => page.waitForEvent('download').catch(logUnhandledError));
+    const downloadEvent = callOnPageNoTrace(this.page, page => page.waitForEvent('download').catch(logDebug));
     try {
       await this.page.goto(url, { waitUntil: 'domcontentloaded' });
     } catch (_e: unknown) {
